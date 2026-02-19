@@ -1,7 +1,5 @@
 """Pydantic models for the verification API."""
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -9,10 +7,9 @@ VERDICTS = ("True", "Mostly True", "Misleading", "False", "Unverifiable")
 
 
 class VerifyRequest(BaseModel):
-    """Raw user input to verify — accepts free-form text, a URL, or both."""
+    """Raw user input to verify — may contain free-form text, URLs, or both."""
 
-    text: str = Field(default="", description="The raw user input containing claims to verify")
-    url: Optional[str] = Field(default=None, description="URL to fetch and extract claims from")
+    text: str = Field(..., description="The raw user input containing claims and/or URLs to verify")
 
 
 class ClaimVerification(BaseModel):

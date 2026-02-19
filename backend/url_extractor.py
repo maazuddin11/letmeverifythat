@@ -1,4 +1,4 @@
-"""Service to fetch a URL and extract readable text content."""
+"""Service to find URLs in user text, fetch them, and extract readable content."""
 
 import re
 from urllib.parse import urlparse
@@ -21,7 +21,7 @@ STRIP_TAGS = [
     "button",
 ]
 
-# Max content length to send to the claim extractor (roughly ~15k words)
+# Max content length per URL (roughly ~15k words)
 MAX_TEXT_LENGTH = 80_000
 
 # Request headers to look like a normal browser (some sites block bare httpx)
@@ -33,17 +33,35 @@ REQUEST_HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 
+# Regex that matches http/https URLs in free-form text
+_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
-def is_url(text: str) -> bool:
-    """Return True if the text looks like a single URL."""
-    text = text.strip()
-    if " " in text or "\n" in text:
-        return False
-    try:
-        parsed = urlparse(text)
-        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
-    except Exception:
-        return False
+
+def extract_urls(text: str) -> tuple[list[str], str]:
+    """
+    Find all URLs in *text* and return (urls, remaining_text).
+
+    The remaining text has the URLs stripped out and excess whitespace collapsed.
+    """
+    urls: list[str] = []
+    seen: set[str] = set()
+    for match in _URL_RE.finditer(text):
+        url = match.group(0).rstrip(".,;:!?)\"'")
+        if url not in seen:
+            urls.append(url)
+            seen.add(url)
+
+    if not urls:
+        return [], text
+
+    # Remove each URL occurrence from the text
+    remaining = text
+    for url in urls:
+        remaining = remaining.replace(url, "")
+
+    # Collapse leftover blank lines / extra spaces
+    remaining = re.sub(r"\n{3,}", "\n\n", remaining).strip()
+    return urls, remaining
 
 
 def _clean_html(html: str) -> str:
@@ -65,12 +83,12 @@ def _clean_html(html: str) -> str:
     return text[:MAX_TEXT_LENGTH]
 
 
-async def extract_text_from_url(url: str) -> str:
+async def fetch_url_text(url: str) -> str:
     """
-    Fetch a URL and return its readable text content.
+    Fetch a single URL and return its readable text content.
 
-    Raises:
-        ValueError: If the URL is invalid or the page cannot be fetched.
+    Raises httpx.HTTPStatusError on HTTP failures, ValueError on non-HTML or
+    empty pages.
     """
     url = url.strip()
     parsed = urlparse(url)

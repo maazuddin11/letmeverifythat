@@ -13,16 +13,6 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-/** Return true if the string is a valid http(s) URL. */
-function isValidUrl(input: string): boolean {
-  try {
-    const url = new URL(input.trim());
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 function useHistory() {
   const [list, setList] = useState<HistoryEntry[]>([]);
 
@@ -38,7 +28,6 @@ function useHistory() {
 }
 
 export default function Home() {
-  const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,27 +35,18 @@ export default function Home() {
   const [currentResultId, setCurrentResultId] = useState<string | null>(null);
   const { list: historyList, refresh: refreshHistory } = useHistory();
 
-  const hasUrl = url.trim().length > 0;
-  const hasText = text.trim().length > 0;
-  const canSubmit = hasUrl || hasText;
-  const urlError = hasUrl && !isValidUrl(url) ? "Enter a valid URL (https://...)" : null;
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setResults(null);
     setCurrentResultId(null);
-    if (!canSubmit || urlError) return;
+    if (!text.trim()) return;
     setLoading(true);
     try {
-      const body: { text?: string; url?: string } = {};
-      if (hasText) body.text = text.trim();
-      if (hasUrl) body.url = url.trim();
-
       const res = await fetch(`${API_BASE}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ text: text.trim() }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -74,11 +54,9 @@ export default function Home() {
       }
       const data: VerifyResponse = await res.json();
       const id = crypto.randomUUID();
-      // Store a display label combining URL and text
-      const displayText = [url.trim(), text.trim()].filter(Boolean).join(" — ");
       saveToHistory({
         id,
-        text: displayText,
+        text: text.trim(),
         results: data,
       });
       refreshHistory();
@@ -114,45 +92,16 @@ export default function Home() {
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="url-input"
-              className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-            >
-              Article URL <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional)</span>
-            </label>
-            <input
-              id="url-input"
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/article"
-              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500"
-              disabled={loading}
-            />
-            {urlError && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{urlError}</p>
-            )}
-          </div>
-          <div>
-            <label
-              htmlFor="text-input"
-              className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
-            >
-              Additional claims or text <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional)</span>
-            </label>
-            <textarea
-              id="text-input"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Paste extra claims, context, or that suspicious health tip..."
-              className="min-h-[120px] w-full resize-y rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-400"
-              disabled={loading}
-            />
-          </div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"Paste claims, an article URL, or both — e.g.\n\nhttps://example.com/health-article\nAlso, someone told me MSG causes headaches"}
+            className="min-h-[160px] w-full resize-y rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-400"
+            disabled={loading}
+          />
           <button
             type="submit"
-            disabled={loading || !canSubmit || !!urlError}
+            disabled={loading || !text.trim()}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-w-[140px] sm:w-auto"
           >
             {loading ? (
