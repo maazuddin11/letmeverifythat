@@ -13,6 +13,18 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** Return true if the input looks like a standalone URL (no surrounding text). */
+function looksLikeUrl(input: string): boolean {
+  const trimmed = input.trim();
+  if (trimmed.includes(" ") || trimmed.includes("\n")) return false;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function useHistory() {
   const [list, setList] = useState<HistoryEntry[]>([]);
 
@@ -43,10 +55,15 @@ export default function Home() {
     if (!text.trim()) return;
     setLoading(true);
     try {
+      const trimmed = text.trim();
+      const body = looksLikeUrl(trimmed)
+        ? { url: trimmed }
+        : { text: trimmed };
+
       const res = await fetch(`${API_BASE}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim() }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -95,10 +112,15 @@ export default function Home() {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Paste a claim, article text, or forward that suspicious health tip..."
+            placeholder="Paste a claim, article URL, or forward that suspicious health tip..."
             className="min-h-[160px] w-full resize-y rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-400"
             disabled={loading}
           />
+          {text.trim() && looksLikeUrl(text) && (
+            <p className="text-sm text-blue-600 dark:text-blue-400">
+              URL detected — we&apos;ll fetch the page and extract claims from it.
+            </p>
+          )}
           <button
             type="submit"
             disabled={loading || !text.trim()}
