@@ -95,7 +95,7 @@ export default function Home() {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Paste a claim, article text, or forward that suspicious health tip..."
+            placeholder={"Paste claims, an article URL, or both — e.g.\n\nhttps://example.com/health-article\nAlso, someone told me MSG causes headaches"}
             className="min-h-[160px] w-full resize-y rounded-lg border border-zinc-300 bg-white px-4 py-3 text-zinc-900 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-400"
             disabled={loading}
           />
