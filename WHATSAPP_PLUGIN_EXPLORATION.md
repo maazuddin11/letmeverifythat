@@ -4,7 +4,9 @@
 
 **Yes, building a WhatsApp plugin for LetMeVerifyThat is feasible** and well-aligned with the project's architecture. The existing FastAPI backend with its `claim_extractor` and `claim_verifier` modules can be reused almost entirely — the main work is adding a webhook endpoint and formatting responses for WhatsApp's message constraints.
 
-This document explores the technical approach, costs, limitations, and a recommended implementation plan.
+This document explores the technical approach, costs, limitations, a recommended implementation plan, and monetization strategies for sustainability.
+
+> **Important Policy Update (Jan 2026):** Meta banned general-purpose AI chatbots from WhatsApp effective January 15, 2026. However, **task-specific bots like fact-checkers appear to remain compliant** — the ban targets services where a general-purpose AI assistant is the "primary (rather than incidental or ancillary) functionality." See the [Platform Policy Risks](#platform-policy-risks-metas-2026-ai-chatbot-ban) section for details.
 
 ---
 
@@ -16,7 +18,7 @@ This document explores the technical approach, costs, limitations, and a recomme
 
 3. **WhatsApp's Cloud API is free for reactive bots.** When a user messages the bot first, a 24-hour window opens during which all replies are free. Since a fact-checking bot is inherently reactive (user sends claim → bot replies), messaging costs are effectively $0.
 
-4. **Precedent exists.** Perplexity itself runs a WhatsApp fact-checking number (+1 833 436 3285). Meedan's Check Bot is used by fact-checking orgs globally. An n8n template combines Twilio + Perplexity for WhatsApp fact-checking.
+4. **Precedent exists.** Meedan's Check Bot is used by fact-checking orgs globally. Perplexity ran a WhatsApp fact-checker throughout 2025 (shut down by Meta's Jan 2026 policy — but that targeted general-purpose AI assistants, not task-specific bots like fact-checkers).
 
 ---
 
@@ -136,6 +138,192 @@ The core verification pipeline stays untouched. The new code is purely integrati
 
 ---
 
+## Platform Policy Risks: Meta's 2026 AI Chatbot Ban
+
+In October 2025, Meta announced that **general-purpose AI chatbots are banned from WhatsApp Business API effective January 15, 2026**. Perplexity, OpenAI (ChatGPT), and Microsoft (Copilot) all shut down their WhatsApp bots.
+
+### Why Fact-Checking Bots Are Likely Exempt
+
+The ban targets services where a general-purpose AI assistant is the **"primary (rather than incidental or ancillary) functionality."** Task-specific bots are explicitly allowed. A fact-checking bot fits the exemption because:
+
+- It has a **single, defined purpose** (claim verification), not open-ended conversation
+- AI is **incidental** to a broader public-interest mission
+- It uses **structured interactions** (claim in, verdict out), not free-form chat
+- Precedent: Meedan's Check Bot, Maldita.es, and The Quint's tipline all continue operating
+
+### Compliance Requirements
+
+To stay on the right side of this policy:
+
+1. **Keep the bot strictly task-specific** — verify claims, don't hold open-ended conversations
+2. **Use structured interactions** — menus, templates, and clear input/output patterns
+3. **Frame the mission clearly** — public interest / journalism / misinformation-fighting
+4. **Include human escalation paths** — option to flag complex claims for human review
+5. **Partner with a Meta-approved BSP** if needed for additional credibility
+
+### Evolving Landscape
+
+EU antitrust probes and exemptions in Italy and Brazil may force Meta to revise this ban. Monitor developments — the policy could loosen or tighten further.
+
+---
+
+## Per-Request Cost Analysis
+
+Understanding the actual cost structure is critical for any sustainability plan.
+
+### API Calls Per User Request
+
+Each verification request makes **1 + N Perplexity API calls**, where N is the number of claims found:
+
+| Step | Model | Purpose | Search | Max Tokens |
+|------|-------|---------|--------|------------|
+| Claim extraction (1 call) | `sonar` (standard) | Extract verifiable claims from text | None | 1,024 |
+| Claim verification (N calls, parallel) | `sonar-pro` (premium) | Verify each claim against real-time sources | Web search with domain filtering | 512 |
+
+**The cost is variable, not fixed.** A message with 5 claims costs ~6x more than a message with 0 claims.
+
+### Estimated Per-Query Costs (Perplexity Sonar Pricing)
+
+| Model | Input | Output | Per-Request Fee | Estimated Cost/Call |
+|-------|-------|--------|-----------------|---------------------|
+| `sonar` (extraction) | $1/M tokens | $1/M tokens | $0.005–0.012 | ~$0.006 |
+| `sonar-pro` (verification) | $3/M tokens | $15/M tokens | $0.006–0.014 | ~$0.012 |
+
+**Example costs per user request (assuming 4 claims average):**
+
+| Component | Calls | Cost/Call | Subtotal |
+|-----------|-------|-----------|----------|
+| Extraction | 1 | ~$0.006 | $0.006 |
+| Verification | 4 | ~$0.012 | $0.048 |
+| **Total** | **5** | | **~$0.054** |
+
+### Monthly Cost Projections
+
+| Scale | API Calls | Perplexity Cost | Hosting | WhatsApp | **Total/Month** |
+|-------|-----------|----------------|---------|----------|-----------------|
+| 1,000 requests/mo | ~5,000 | $50–65 | $10 | $0 | **$60–75** |
+| 10,000 requests/mo | ~50,000 | $500–650 | $20 | $0 | **$520–670** |
+| 100,000 requests/mo | ~500,000 | $5,000–6,500 | $50 | $0 | **$5,050–6,550** |
+
+WhatsApp messaging remains $0 because the bot is reactive (all replies within the free 24-hour service window).
+
+### Cost Reduction Levers
+
+1. **Response caching** — Many misinformation claims are repeated verbatim. Caching identical queries could cut API calls by 30–50%.
+2. **Downgrade verification model** — Use `sonar` instead of `sonar-pro` for simpler claims (saves ~50% per verification call).
+3. **Cap claims per request** — Limit extraction to 5 claims max to bound the worst case.
+4. **Per-user daily limits** — 3–5 free checks/day prevents abuse.
+
+---
+
+## Monetization and Sustainability
+
+### How Existing Services Fund Themselves
+
+| Service | Model | Details |
+|---------|-------|---------|
+| **Perplexity WhatsApp** | VC-subsidized loss leader | Entirely free. Used for user acquisition, not revenue. Shut down Jan 2026. |
+| **Meedan Check Bot** | Philanthropic grants | $750K from McGovern Foundation, SIDA funding, Press Forward grants, micro-grants program. Nonprofit model. |
+| **Maldita.es** | Grants + membership | Users become paying "malditas" (members) with recurring donations. Bot automates 60%+ of claim triage. |
+| **FactCheck.org** | Foundation funding | Annenberg Foundation endowment + Facebook/Meta partnership fees. |
+
+**Key takeaway:** No one in this space has cracked pure-profit monetization. The successful models are either VC-subsidized, grant-funded, or membership/donation-supported.
+
+### Recommended Models (Ranked by Practicality for Break-Even)
+
+#### 1. Freemium with Daily Limits (Most Practical)
+
+Offer a free tier with a cap, charge for more:
+
+- **Free:** 3–5 fact-checks per day per user
+- **Premium:** $1–3/month for unlimited checks (or higher cap)
+- **Math:** 500 paying users at $2/month = $1,000/month, covering ~15,000–20,000 requests
+
+This is the most predictable model. It keeps the service accessible while shifting costs to power users.
+
+#### 2. Donation/Tip Model
+
+Embed a non-intrusive donation prompt in bot responses:
+
+- _"This fact-check was free. Help keep it running: [link]"_
+- Use Ko-fi, Buy Me a Coffee, GitHub Sponsors, or direct payment links
+- WhatsApp donation bots show ~5x higher conversion than email
+- **Math:** 10,000 requests/month, 3% donate $1 = $300/month vs ~$520–670 cost
+
+Won't fully cover costs alone at scale, but works well **combined** with other models.
+
+#### 3. Grant Funding
+
+Several active programs fund fact-checking tools:
+
+| Program | Amount | Notes |
+|---------|--------|-------|
+| **IFCN SUSTAIN Grants** (Poynter) | $30,000 each | Round 2 opens mid-Feb 2026 |
+| **Global Fact Check Fund** (Google/YouTube/IFCN) | From $13.2M pool | Three tracks: BUILD/GROW/ENGAGE |
+| **Meedan Micro-Grants** | Up to $15,000 | Rolling applications |
+| **Democracy Fund Prototype Fund** | ~$50,000 avg | For misinformation-fighting tools |
+| **Pulitzer Center Truth Decay** | Varies | Open to U.S. residents, global journalists |
+
+Even one $15K micro-grant covers 12–18 months of operation at moderate scale. This requires nonprofit status or fiscal sponsorship and effort in proposal writing, but is highly viable for a public-interest tool.
+
+#### 4. Institutional Licensing / White-Label
+
+Sell access to the verification engine, not directly to consumers:
+
+- **News organizations** pay $10–50/month to embed a fact-check widget or bot for their audience
+- **Schools/libraries** get organizational access
+- **NGOs** white-label the bot for their regions
+
+This shifts your revenue source from individual users to organizations with budgets.
+
+#### 5. API Access / Developer Tier
+
+Offer the fact-checking pipeline as a paid API:
+
+- Other developers or organizations call your `/verify` endpoint
+- Charge per request (e.g., $0.10/check) or monthly subscription
+- Covers your Perplexity costs with margin
+
+### What Won't Work
+
+| Model | Why Not |
+|-------|---------|
+| **Ads in bot responses** | Terrible UX in a trust-oriented service. Undermines credibility. |
+| **Selling user data** | Ethical and legal minefield. Incompatible with a fact-checking mission. |
+| **Pure free + hope for donations** | Doesn't scale. Perplexity could afford it with VC money; a small project can't. |
+
+### Recommended Strategy: Layered Approach
+
+The most resilient approach combines multiple revenue streams:
+
+```
+Month 1-3:   Free with daily limits (3 checks/day)
+             + Donation link in every 3rd response
+             + Apply for 1-2 grants (Meedan, IFCN)
+
+Month 3-6:   Introduce $2/month premium tier
+             + Implement response caching (cut costs 30-50%)
+
+Month 6-12:  Pursue institutional licensing
+             + API access tier for developers
+             + Continue grant applications
+
+Cost floor:  ~$60-75/month at 1K requests
+Cost target: Break even at ~5K requests with 200 paying users
+```
+
+### Architecture for Cost Control
+
+Build these into the system from day one:
+
+1. **Response cache** — Store (claim_hash → result) with a TTL. Viral misinformation is highly repetitive.
+2. **Tiered processing** — Simple claims use `sonar` ($0.006); complex claims escalate to `sonar-pro` ($0.012).
+3. **Per-user rate limits** — Free tier: 3–5/day. Premium: 25–50/day. Hard cap prevents runaway costs.
+4. **Usage dashboard** — Monitor daily API spend to catch spikes early.
+5. **Claim deduplication** — Normalize claim text before extraction to catch near-duplicates.
+
+---
+
 ## Recommended Implementation Plan
 
 ### Phase 1: Core WhatsApp Bot (MVP)
@@ -247,17 +435,20 @@ This reuses the existing `extract_claims`, `verify_claim`, `extract_urls`, and `
 
 ## Existing Precedents
 
-| Project | Description |
-|---------|-------------|
-| **Perplexity WhatsApp** | Perplexity runs its own WhatsApp fact-checking at +1 (833) 436-3285 |
-| **Meedan Check Bot** | Used by fact-checking orgs in Brazil, India, Africa; handles forwarded messages |
-| **n8n Template** | Workflow combining Twilio + Perplexity AI for WhatsApp fact-checking |
-| **Fact-Checker-WhatsApp-Bot** | Open-source Flask + Twilio + OpenAI bot on GitHub |
+| Project | Status | Funding Model | Description |
+|---------|--------|---------------|-------------|
+| **Perplexity WhatsApp** | Shut down (Jan 2026) | VC-subsidized (free) | Ran a free WhatsApp fact-checker throughout 2025; shut down by Meta's general-purpose AI bot ban |
+| **Meedan Check Bot** | Active | Grants ($750K+ from multiple funders) | Used by fact-checking orgs in Brazil, India, Africa; handles forwarded messages |
+| **Maldita.es** | Active | Grants + membership donations | Spanish fact-checker; bot automates 60%+ of claim triage |
+| **n8n Template** | Active | Open-source template | Workflow combining Twilio + Perplexity AI for WhatsApp fact-checking |
+| **Fact-Checker-WhatsApp-Bot** | Active | Open-source | Flask + Twilio + OpenAI bot on GitHub |
 
 ---
 
 ## Conclusion
 
-A WhatsApp plugin for LetMeVerifyThat is not only feasible — it's a natural extension. The architecture already separates concerns cleanly: the verification pipeline is independent of the delivery channel. Adding WhatsApp means building a thin webhook layer on top of the existing backend, with no changes to the core claim extraction and verification logic.
+A WhatsApp plugin for LetMeVerifyThat is technically feasible and architecturally natural — the verification pipeline is already independent of the delivery channel. Adding WhatsApp means building a thin webhook layer, not a rearchitecture.
 
-The official WhatsApp Cloud API makes this economically viable (free for reactive bots) and technically straightforward (webhook-based, REST API). The main investment is the integration code and Meta's business verification process, not a fundamental rearchitecture.
+**For sustainability**, the realistic path is a layered approach: free tier with daily limits + a low-cost premium tier + grant funding. No fact-checking service has achieved pure-profit monetization; the successful ones combine freemium, donations, and grants. The good news is that the cost floor is low (~$60–75/month at 1K requests), and even modest revenue from 200 paying users at $2/month covers significant scale.
+
+**The key risk** is Meta's January 2026 ban on general-purpose AI chatbots. A task-specific fact-checking bot likely falls under the exemption, but this should be confirmed with Meta or a BSP partner before investing heavily in the integration. The policy landscape is actively shifting, with EU antitrust probes potentially forcing Meta to revise its stance.
