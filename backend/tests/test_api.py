@@ -1,6 +1,5 @@
 """Integration tests for the FastAPI /verify and /health endpoints."""
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -147,3 +146,95 @@ class TestVerifyEndpoint:
         resp = client.post("/verify", json={"text": "some text"})
         assert resp.status_code == 502
         assert "Claim verification failed" in resp.json()["detail"]
+
+
+class TestYouTubeRouting:
+    @patch("main.fetch_youtube_transcript")
+    @patch("main.verify_claims", new_callable=AsyncMock)
+    @patch("main.extract_claims", new_callable=AsyncMock)
+    def test_youtube_url_uses_transcript(
+        self, mock_extract, mock_verify, mock_yt, client, monkeypatch
+    ):
+        monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
+        mock_yt.return_value = "Vaccines are safe and effective."
+        mock_extract.return_value = ["Vaccines are safe and effective"]
+        mock_verify.return_value = [
+            {
+                "claim": "Vaccines are safe and effective",
+                "verdict": "True",
+                "confidence": 95,
+                "explanation": "Supported by research.",
+                "sources": [],
+            }
+        ]
+
+        resp = client.post(
+            "/verify",
+            json={"text": "https://www.youtube.com/watch?v=abc123 Is this true?"},
+        )
+        assert resp.status_code == 200
+        mock_yt.assert_called_once_with("abc123")
+        combined = mock_extract.call_args[0][0]
+        assert "Vaccines are safe and effective" in combined
+
+    @patch("main.fetch_url_text", new_callable=AsyncMock)
+    @patch("main.fetch_youtube_transcript")
+    @patch("main.verify_claims", new_callable=AsyncMock)
+    @patch("main.extract_claims", new_callable=AsyncMock)
+    def test_youtube_transcript_failure_falls_back_to_html(
+        self, mock_extract, mock_verify, mock_yt, mock_html, client, monkeypatch
+    ):
+        monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
+        mock_yt.side_effect = ValueError("No transcript available")
+        mock_html.return_value = "Page metadata from YouTube."
+        mock_extract.return_value = ["A claim from metadata"]
+        mock_verify.return_value = [
+            {
+                "claim": "A claim from metadata",
+                "verdict": "True",
+                "confidence": 80,
+                "explanation": "Supported.",
+                "sources": [],
+            }
+        ]
+
+        resp = client.post(
+            "/verify",
+            json={"text": "https://www.youtube.com/watch?v=abc123"},
+        )
+        assert resp.status_code == 200
+        mock_html.assert_called_once()
+
+    @patch("main.fetch_url_text", new_callable=AsyncMock)
+    @patch("main.fetch_youtube_transcript")
+    @patch("main.verify_claims", new_callable=AsyncMock)
+    @patch("main.extract_claims", new_callable=AsyncMock)
+    def test_youtube_and_regular_url_both_processed(
+        self, mock_extract, mock_verify, mock_yt, mock_html, client, monkeypatch
+    ):
+        monkeypatch.setenv("PERPLEXITY_API_KEY", "test-key")
+        mock_yt.return_value = "Transcript text from video."
+        mock_html.return_value = "Article text from website."
+        mock_extract.return_value = ["Claim A"]
+        mock_verify.return_value = [
+            {
+                "claim": "Claim A",
+                "verdict": "True",
+                "confidence": 90,
+                "explanation": "Supported.",
+                "sources": [],
+            }
+        ]
+
+        resp = client.post(
+            "/verify",
+            json={
+                "text": "https://www.youtube.com/watch?v=abc123\nhttps://example.com/article"
+            },
+        )
+        assert resp.status_code == 200
+        mock_yt.assert_called_once_with("abc123")
+        mock_html.assert_called_once_with("https://example.com/article")
+        combined = mock_extract.call_args[0][0]
+        assert "Transcript text from video" in combined
+        assert "Article text from website" in combined

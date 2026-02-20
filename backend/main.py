@@ -12,6 +12,7 @@ from claim_extractor import extract_claims
 from claim_verifier import verify_claims
 from models import ClaimVerification, VerifyRequest, VerifyResponse
 from url_extractor import extract_urls, fetch_url_text
+from youtube_extractor import extract_video_id, fetch_youtube_transcript, is_youtube_url
 
 # Load .env from project root then backend/ so keys are found when run from backend/
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -53,11 +54,24 @@ async def verify(request: VerifyRequest) -> VerifyResponse:
     # Pull URLs out of the input and keep the remaining prose
     urls, remaining_text = extract_urls(raw)
 
-    # Fetch all URLs in parallel
+    # Fetch all URLs in parallel, routing YouTube URLs to the transcript API
     url_texts: list[str] = []
     if urls:
+
+        async def _fetch_one(url: str) -> str:
+            if is_youtube_url(url):
+                video_id = extract_video_id(url)
+                if video_id:
+                    try:
+                        return await asyncio.to_thread(
+                            fetch_youtube_transcript, video_id
+                        )
+                    except ValueError:
+                        pass  # fall through to generic HTML fetch
+            return await fetch_url_text(url)
+
         fetch_results = await asyncio.gather(
-            *(fetch_url_text(u) for u in urls),
+            *(_fetch_one(u) for u in urls),
             return_exceptions=True,
         )
         for url, result in zip(urls, fetch_results):
