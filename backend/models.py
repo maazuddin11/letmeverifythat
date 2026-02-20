@@ -7,9 +7,9 @@ VERDICTS = ("True", "Mostly True", "Misleading", "False", "Unverifiable")
 
 
 class VerifyRequest(BaseModel):
-    """Raw user input to verify."""
+    """Raw user input to verify — may contain free-form text, URLs, or both."""
 
-    text: str = Field(..., description="The raw user input containing claims to verify")
+    text: str = Field(..., description="The raw user input containing claims and/or URLs to verify")
 
 
 class ClaimVerification(BaseModel):
